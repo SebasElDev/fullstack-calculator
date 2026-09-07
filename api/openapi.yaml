@@ -1,0 +1,240 @@
+openapi: 3.1.0
+info:
+  title: Calculator API
+  version: 1.0.0
+  summary: Stateless arithmetic service for the fullstack-calculator project.
+  description: |
+    Every arithmetic operation is performed server-side. Clients (including the
+    bundled React frontend) never compute anything themselves; they only build
+    requests, display results and format history strings.
+
+    Results are normalised to 15 significant digits (float64's guaranteed decimal
+    precision, `DBL_DIG`) so binary floating-point artefacts such as
+    `0.1 + 0.2 = 0.30000000000000004` are never surfaced to clients.
+
+    The `/health` route is also served at the server root (`GET /health`) so
+    container platforms can probe it without the API prefix.
+  license:
+    name: MIT
+servers:
+  - url: /api/v1
+    description: Same-origin (the Go binary serves the SPA and the API together)
+  - url: http://localhost:8080/api/v1
+    description: Local backend (Vite dev server proxies `/api` here)
+
+tags:
+  - name: calculator
+  - name: meta
+
+paths:
+  /health:
+    get:
+      tags: [meta]
+      operationId: getHealth
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                version: 1.0.0
+
+  /operations:
+    get:
+      tags: [meta]
+      operationId: listOperations
+      summary: List the operations this server can perform
+      description: Canonical registry of operations, in keypad order. Clients may use it for discovery or to validate their own operation tables.
+      responses:
+        "200":
+          description: Supported operations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsResponse"
+              example:
+                operations:
+                  - name: add
+                    symbol: "+"
+                    arity: 2
+                    description: Sum of two operands
+                  - name: sqrt
+                    symbol: "√"
+                    arity: 1
+                    description: Principal square root
+
+  /calculate:
+    post:
+      tags: [calculator]
+      operationId: calculate
+      summary: Perform one arithmetic operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalculateRequest"
+            examples:
+              binary:
+                summary: Binary operation
+                value: { operation: add, operands: [2, 3] }
+              unary:
+                summary: Unary operation
+                value: { operation: sqrt, operands: [9] }
+      responses:
+        "200":
+          description: Calculation succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculateResponse"
+              example: { operation: add, operands: [2, 3], result: 5 }
+        "400":
+          description: |
+            The request itself is invalid: malformed JSON, wrong field types,
+            unknown operation (`UNSUPPORTED_OPERATION`) or wrong operand count
+            (`INVALID_OPERANDS`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: INVALID_OPERANDS
+                  message: 'operation "add" expects 2 operands, got 1'
+        "422":
+          description: |
+            The request is well-formed but the operation has no defined finite
+            result: `DIVISION_BY_ZERO`, `UNDEFINED_RESULT` (e.g. `sqrt(-1)`),
+            `RESULT_OUT_OF_RANGE` (overflow beyond float64).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: DIVISION_BY_ZERO
+                  message: division by zero is undefined
+        "500":
+          description: Unexpected failure (`INTERNAL_ERROR`). Never leaks internals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    OperationName:
+      type: string
+      description: Canonical operation identifier. Binary operations take exactly two operands, unary exactly one.
+      enum:
+        - add        # binary  a + b
+        - subtract   # binary  a - b
+        - multiply   # binary  a * b
+        - divide     # binary  a / b            (b = 0 -> DIVISION_BY_ZERO)
+        - power      # binary  a ^ b            (NaN -> UNDEFINED_RESULT, Inf -> RESULT_OUT_OF_RANGE)
+        - modulo     # binary  a mod b, sign follows dividend (Go math.Mod / C fmod)   (b = 0 -> DIVISION_BY_ZERO)
+        - negate     # unary   -a
+        - sqrt       # unary   √a               (a < 0 -> UNDEFINED_RESULT)
+        - square     # unary   a²
+        - percent    # unary   a / 100
+
+    Operand:
+      type: number
+      format: double
+      description: Finite IEEE-754 double. JSON cannot encode NaN/Infinity, and out-of-range literals are rejected as INVALID_REQUEST.
+
+    CalculateRequest:
+      type: object
+      required: [operation, operands]
+      additionalProperties: false
+      properties:
+        operation:
+          $ref: "#/components/schemas/OperationName"
+        operands:
+          type: array
+          description: Ordered operands. Length must equal the operation's arity.
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/Operand"
+
+    CalculateResponse:
+      type: object
+      required: [operation, operands, result]
+      properties:
+        operation:
+          $ref: "#/components/schemas/OperationName"
+        operands:
+          type: array
+          items:
+            $ref: "#/components/schemas/Operand"
+          description: Echo of the operands that were evaluated.
+        result:
+          type: number
+          format: double
+          description: Finite result, normalised to 15 significant digits.
+
+    OperationInfo:
+      type: object
+      required: [name, symbol, arity, description]
+      properties:
+        name:
+          $ref: "#/components/schemas/OperationName"
+        symbol:
+          type: string
+          description: Human-facing glyph (e.g. "÷", "√", "x²").
+        arity:
+          type: integer
+          enum: [1, 2]
+        description:
+          type: string
+
+    OperationsResponse:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperationInfo"
+
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          const: ok
+        version:
+          type: string
+          description: Build version injected at compile time (git SHA or semver); "dev" for local builds.
+
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_REQUEST        # 400 malformed body / wrong types
+        - UNSUPPORTED_OPERATION  # 400 unknown operation name
+        - INVALID_OPERANDS       # 400 arity mismatch
+        - DIVISION_BY_ZERO       # 422
+        - UNDEFINED_RESULT       # 422 NaN (sqrt of negative, 0^0 style indeterminates are NOT errors: math.Pow(0,0)=1)
+        - RESULT_OUT_OF_RANGE    # 422 ±Inf (overflow)
+        - INTERNAL_ERROR         # 500
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            message:
+              type: string
+              description: Human-readable, safe to display in a UI.

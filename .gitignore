@@ -1,0 +1,31 @@
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# --- Go / backend ---
+backend/bin/
+backend/coverage.out
+backend/coverage.html
+*.test
+*.out
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Build / deploy artifacts ---
+dist/
+tmp/
+.deploy-outputs.json
