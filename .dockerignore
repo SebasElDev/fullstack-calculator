@@ -1,0 +1,37 @@
+# Version control
+.git
+.gitignore
+
+# Docs and non-build metadata
+docs
+deploy
+*.md
+LICENSE
+
+# CI / editor
+.github
+.editorconfig
+.vscode
+.idea
+
+# Node
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/.vite
+
+# Go
+backend/bin
+backend/bin/api
+
+# Test/coverage artifacts
+**/coverage
+**/*.test
+**/*.out
+
+# OS cruft
+**/.DS_Store
+
+# Local env files
+**/.env
+**/.env.*
