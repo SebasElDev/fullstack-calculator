@@ -13,7 +13,6 @@ export default function App() {
           <h1 className="text-base font-semibold tracking-tight text-slate-100">Calculator</h1>
         </header>
         <Calculator>
-          <Calculator.Status />
           <Calculator.Display />
           <Calculator.Keypad />
           <Calculator.History />

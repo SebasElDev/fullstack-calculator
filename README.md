@@ -51,7 +51,6 @@ curl https://vegmwcswz2.us-east-1.awsapprunner.com/health
 ```tsx
 <ApiClientProvider client={apiClient}>
   <Calculator>
-    <Calculator.Status />
     <Calculator.Display />
     <Calculator.Keypad />
     <Calculator.History />
