@@ -67,7 +67,8 @@ something it must not.
 | Entities | `internal/domain` | stdlib only | anything under `internal/`, any third-party module |
 | Use cases | `internal/usecase/calculator` | stdlib, `domain` | `adapter/*`, `infrastructure/*`, Fiber |
 | Interface adapters | `internal/adapter/http/dto`, `internal/adapter/http/fiber` | stdlib, `domain`, `usecase`, (`fiber` only inside `adapter/http/fiber`) | `infrastructure/*`, `cmd/*` |
-| Frameworks & drivers | `internal/infrastructure/config`, `cmd/api` | everything | — |
+| Frameworks & drivers | `internal/infrastructure/config` | stdlib only (it reads the environment, nothing else) | anything under `internal/` |
+| Frameworks & drivers | `cmd/api` | everything | — |
 
 ### 2.2 Package responsibilities
 
@@ -97,10 +98,13 @@ backend/
     │   │   ├── errors.go               ErrorResponse{Error{Code,Message}}; MapError(err) (httpStatus int, ErrorResponse)
     │   │   └── *_test.go               every domain error → exact (status, code) from the OpenAPI spec
     │   └── fiber/                      the ONLY package that imports gofiber
-    │       ├── app.go                  New(Options{Calculator, Version, CORSOrigins, StaticDir}) *fiber.App
+    │       ├── app.go                  New(Options{Calculator, Version, CORSOrigins, StaticDir, Logger}) *fiber.App
     │       ├── handlers.go             thin: parse → dto → usecase → dto → respond. No arithmetic, no business rules.
-    │       ├── static.go               optional SPA hosting: /assets/*, index.html fallback for non-/api GETs
-    │       └── handlers_test.go        app.Test() against a FAKE Calculator — proves handlers are decoupled from math
+    │       ├── errors.go               the error boundary: resolveError + errorHandler, routeNotFoundError
+    │       ├── static.go               optional SPA hosting: immutable /assets/*, revalidated shell, index.html fallback
+    │       ├── handlers_test.go        app.Test() against a FAKE Calculator — proves handlers are decoupled from math
+    │       ├── hardening_test.go       security headers and the static caching policy
+    │       └── errors_internal_test.go the not-found error is Fiber's sentinel
     └── infrastructure/config/          FRAMEWORKS & DRIVERS
         ├── config.go                   Load() from env: PORT(8080) STATIC_DIR("") CORS_ALLOWED_ORIGINS("") SHUTDOWN_TIMEOUT(10s)
         └── config_test.go
@@ -215,8 +219,12 @@ Routes (see `api/openapi.yaml` for schemas):
 | GET | `/*` (only when `STATIC_DIR` set) | SPA assets; `index.html` fallback for non-`/api` paths; `/api/*` unknown routes still 404 JSON |
 
 Middleware: `recover` (panics → 500 `INTERNAL_ERROR`), `requestid`, structured
-request logging (`log/slog`), `cors` only when `CORS_ALLOWED_ORIGINS` is set
-(same-origin deployments need none). Body limits as described in §2.4.
+request logging (`log/slog`), `helmet` (a same-origin Content-Security-Policy,
+`nosniff`, `X-Frame-Options: DENY`, `frame-ancestors 'none'`), `cors` only when
+`CORS_ALLOWED_ORIGINS` is set (same-origin deployments need none). Body limits
+as described in §2.4. Static files: `/assets/*` (Vite's content-hashed
+bundles) are `Cache-Control: public, max-age=31536000, immutable` and a
+missing bundle is a JSON 404; the shell and unhashed files are `no-cache`.
 
 Server lifecycle (`cmd/api/main.go`): listen on `:PORT`, trap
 `SIGINT`/`SIGTERM`, `ShutdownWithTimeout(SHUTDOWN_TIMEOUT)`. Version string is
@@ -289,8 +297,10 @@ frontend/
 │   │   │   ├── client.ts                createApiClient({ baseUrl, fetch? }) → ApiClient { calculate, listOperations, health }
 │   │   │   │                            ApiError extends Error { status, code, message }
 │   │   │   └── client.test.ts
-│   │   └── operations.ts                OPERATIONS: Record<OperationName, OperationMeta{ symbol, label, arity, kind:"binary"|"unary" }>
-│   │                                    single source of truth for keypad glyphs and history formatting
+│   │   ├── operations.ts                OPERATIONS: Record<OperationName, OperationMeta{ symbol, label, arity, kind:"binary"|"unary" }>
+│   │   │                                single source of truth for keypad glyphs and history formatting
+│   │   ├── cn.ts                        conditional className joiner
+│   │   └── ids.ts                       session-unique ids for history rows (crypto.randomUUID with a counter fallback)
 │   ├── features/calculator/
 │   │   ├── context/
 │   │   │   ├── ApiClientContext.tsx     ApiClientProvider, useApiClient
@@ -319,6 +329,7 @@ interface CalculatorState {
   accumulator: number | null;           // left operand; ONLY ever set from a server result or Number(input)
   pendingOperation: BinaryOperationName | null;
   overwrite: boolean;                   // next digit replaces `input` (true after a result or an operator)
+  hasRightOperand: boolean;             // `input` holds an operand typed for the pending operation
   expression: string | null;            // secondary line, e.g. "2 +" or "2 + 3 ="
   status: "idle" | "calculating" | "error";
   error: { code: ErrorCode | "NETWORK_ERROR"; message: string } | null;
@@ -354,7 +365,7 @@ AC   ⌫    mod   ÷
 √    x²   xʸ    ×
 7    8    9     −
 4    5    6     +
-1    2    3     =   (= spans two rows)
+1    2    3     =
 ±    0    .     %
 ```
 
@@ -424,8 +435,10 @@ delete foundation). Everything is tagged `Project=fullstack-calculator`.
 **CI/CD (`.github/workflows/ci.yml`):** `backend` (gofmt, vet, test -race),
 `frontend` (biome, tsc, vitest), `docker` (build, no push) on every push/PR;
 `deploy` job on `main` only, authenticating with OIDC (`vars.AWS_ROLE_ARN`),
-tags the image with the commit SHA, pushes, and runs the same
-`aws cloudformation deploy` of `service.yaml` that `deploy.sh` uses.
+tags the image with the commit SHA, pushes, and then runs the very same
+`deploy/aws/deploy.sh` an operator runs locally (with `IMAGE_URI` pointing at
+the image it just pushed), so CI and manual deploys share one code path: stack
+update, wait for `RUNNING`, `/health` smoke test.
 
 ---
 

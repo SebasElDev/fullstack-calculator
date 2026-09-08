@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
@@ -26,8 +27,16 @@ const (
 	// it is still reading the request, before any handler runs. It protects the
 	// process from abusive payloads; ordinary oversized bodies never reach it.
 	transportBodyLimit = 64 * 1024
-	// appName identifies the service in the Server header and in Fiber's config.
+	// appName identifies the service in Fiber's config and startup output. No
+	// Server header is emitted, which is deliberate.
 	appName = "fullstack-calculator"
+
+	// contentSecurityPolicy fits the bundled SPA exactly: same-origin scripts,
+	// styles and API calls, inline style attributes (Tailwind/React), data URIs
+	// for images, and no framing or plugins whatsoever.
+	contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; " +
+		"base-uri 'none'; form-action 'none'"
 
 	apiPrefix   = "/api"
 	apiV1Prefix = "/api/v1"
@@ -82,6 +91,10 @@ func New(opts Options) *fiber.App {
 	app.Use(requestid.New())
 	app.Use(requestLogger(logger))
 	app.Use(recover.New())
+	app.Use(helmet.New(helmet.Config{
+		ContentSecurityPolicy: contentSecurityPolicy,
+		XFrameOptions:         "DENY",
+	}))
 
 	if len(opts.CORSOrigins) > 0 {
 		app.Use(cors.New(cors.Config{
