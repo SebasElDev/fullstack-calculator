@@ -19,7 +19,6 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true,
     proxy: Object.fromEntries(
       PROXIED_PATHS.map((path) => [path, { target: BACKEND_ORIGIN, changeOrigin: true }]),
     ),

@@ -236,6 +236,24 @@ describe("CalculatorProvider", () => {
     expect(client.calculate).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps up with keys pressed faster than React re-renders", async () => {
+    const client = createMockApiClient();
+    client.calculate.mockResolvedValueOnce({ operation: "add", operands: [2, 3], result: 5 });
+    renderCalculator(client);
+
+    // All four presses land in a single tick, before any re-render.
+    await act(async () => {
+      for (const key of ["2", "add", "3", "equals"]) {
+        screen.getByTestId(`key-${key}`).click();
+      }
+    });
+
+    expect(client.calculate).toHaveBeenCalledWith({ operation: "add", operands: [2, 3] });
+    await waitFor(() => {
+      expect(displayValue()).toBe("5");
+    });
+  });
+
   it("ignores keystrokes while a calculation is in flight", async () => {
     const deferred = createDeferred<CalculateResponse>();
     const client = createMockApiClient();

@@ -3,7 +3,6 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useReducer,
   useRef,
@@ -17,6 +16,7 @@ import {
 } from "@/features/calculator/state/formatting";
 import { calculatorReducer, createInitialState } from "@/features/calculator/state/reducer";
 import type {
+  CalculatorAction,
   CalculatorError,
   CalculatorState,
   KeyAction,
@@ -71,20 +71,23 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
   const client = useApiClient();
   const [state, dispatch] = useReducer(calculatorReducer, undefined, createInitialState);
 
-  // Keystrokes are handled outside the render that produced them, so actions
-  // read the latest state through a ref rather than a stale closure.
+  // Actions run outside the render that produced the state they need — a
+  // keystroke, or a response arriving later. They read this ref, which is
+  // advanced by the same pure reducer React uses, so it is correct even when
+  // several keys are pressed before React has re-rendered.
   const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const apply = useCallback((action: CalculatorAction) => {
+    stateRef.current = calculatorReducer(stateRef.current, action);
+    dispatch(action);
+  }, []);
 
   const runCalculation = useCallback(
     async (plan: CalculationPlan) => {
-      dispatch({ type: "CALCULATION_STARTED", expression: completedExpression(plan.expression) });
+      apply({ type: "CALCULATION_STARTED", expression: completedExpression(plan.expression) });
       try {
         const response = await client.calculate(plan.request);
         const chain = plan.next(response.result);
-        dispatch({
+        apply({
           type: "CALCULATION_SUCCEEDED",
           result: response.result,
           entry: {
@@ -97,10 +100,10 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
           expression: chain.expression,
         });
       } catch (cause) {
-        dispatch({ type: "CALCULATION_FAILED", error: toCalculatorError(cause) });
+        apply({ type: "CALCULATION_FAILED", error: toCalculatorError(cause) });
       }
     },
-    [client],
+    [client, apply],
   );
 
   const press = useCallback(
@@ -112,19 +115,19 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
 
       switch (action.type) {
         case "digit":
-          dispatch({ type: "DIGIT", digit: action.digit });
+          apply({ type: "DIGIT", digit: action.digit });
           return;
 
         case "decimal":
-          dispatch({ type: "DECIMAL" });
+          apply({ type: "DECIMAL" });
           return;
 
         case "backspace":
-          dispatch({ type: "BACKSPACE" });
+          apply({ type: "BACKSPACE" });
           return;
 
         case "clear":
-          dispatch({ type: "CLEAR" });
+          apply({ type: "CLEAR" });
           return;
 
         case "operator": {
@@ -147,7 +150,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
             });
             return;
           }
-          dispatch({
+          apply({
             type: "OPERATOR_SELECTED",
             operation: action.operation,
             accumulator: operand,
@@ -202,7 +205,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
         }
       }
     },
-    [runCalculation],
+    [runCalculation, apply],
   );
 
   const value = useMemo<CalculatorContextValue>(() => ({ state, press }), [state, press]);
