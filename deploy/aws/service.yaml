@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  fullstack-calculator — service stack: the AWS App Runner service that runs
+  the single production container image.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: fullstack-calculator
+
+  ImageUri:
+    Type: String
+    Description: Full ECR image URI including tag, e.g. <account>.dkr.ecr.<region>.amazonaws.com/<repo>:<sha>
+
+  AccessRoleArn:
+    Type: String
+    Description: ARN of the IAM role App Runner assumes to pull from ECR (AppRunnerEcrAccessRole from the foundation stack).
+
+  Cpu:
+    Type: String
+    Default: "256"
+
+  Memory:
+    Type: String
+    Default: "512"
+
+Resources:
+  Service:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Sub "${ProjectName}-service"
+      SourceConfiguration:
+        AutoDeploymentsEnabled: false
+        AuthenticationConfiguration:
+          AccessRoleArn: !Ref AccessRoleArn
+        ImageRepository:
+          ImageIdentifier: !Ref ImageUri
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: STATIC_DIR
+                Value: /app/public
+      InstanceConfiguration:
+        Cpu: !Ref Cpu
+        Memory: !Ref Memory
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  ServiceArn:
+    Value: !GetAtt Service.ServiceArn
+  ServiceUrl:
+    Value: !Sub "https://${Service.ServiceUrl}"
+  ServiceId:
+    Value: !GetAtt Service.ServiceId
