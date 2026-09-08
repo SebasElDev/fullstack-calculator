@@ -604,7 +604,10 @@ resource — no load balancer, no NAT gateway, no database.
 `.github/workflows/ci.yml` runs `backend`, `frontend`, and `docker` (build
 only, no push) on every push and pull request. The `deploy` job runs only on
 a push to `main`, after the other three succeed, and authenticates to AWS
-with GitHub OIDC — no long-lived AWS credentials are stored in the repo.
+with GitHub OIDC — no long-lived AWS credentials are stored in the repo. The
+deploy role trusts only this repository's immutable OIDC subject (owner and
+repository IDs, the default for repositories created after July 2026) on
+`main`; `bootstrap.sh` resolves the two IDs with `gh`.
 It needs five repository variables, all printed by `bootstrap.sh` on first
 deploy:
 

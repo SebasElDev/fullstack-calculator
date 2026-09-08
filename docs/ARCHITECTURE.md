@@ -420,8 +420,9 @@ via two CloudFormation stacks in `deploy/aws/`:
 
 * `foundation.yaml` — ECR repo (lifecycle: keep last 10), App Runner ECR
   access role, GitHub OIDC provider (optional, conditional) + a deploy role
-  scoped to this repo's `main` branch that may push to this ECR repo and start
-  App Runner deployments.
+  that trusts only this repository's immutable OIDC subject (owner and
+  repository IDs) on `main` and may push to this ECR repo and update the
+  service stack.
 * `service.yaml` — the App Runner service (params: `ImageUri`, `AccessRoleArn`).
 
 A release is a CloudFormation update of `service.yaml` with a new `ImageUri`

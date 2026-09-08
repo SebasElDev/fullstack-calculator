@@ -20,6 +20,22 @@ Parameters:
     Default: main
     Description: Branch allowed to assume the deploy role via OIDC.
 
+  GitHubOwnerId:
+    Type: String
+    Default: ""
+    Description: >
+      Numeric id of the repository owner. Repositories created after
+      2026-07-15 present an immutable OIDC subject
+      (repo:<owner>@<ownerId>/<repo>@<repoId>:ref:refs/heads/<branch>); when
+      both ids are given the trust policy pins that subject and nothing else.
+      Leave both empty for older repositories that still use the classic
+      subject (repo:<owner>/<repo>:ref:refs/heads/<branch>).
+
+  GitHubRepositoryId:
+    Type: String
+    Default: ""
+    Description: Numeric id of the repository (see GitHubOwnerId).
+
   ServiceStackName:
     Type: String
     Default: fullstack-calculator-service
@@ -38,6 +54,9 @@ Parameters:
 
 Conditions:
   ShouldCreateOidcProvider: !Equals [!Ref CreateGitHubOidcProvider, "true"]
+  UsesImmutableSubject: !And
+    - !Not [!Equals [!Ref GitHubOwnerId, ""]]
+    - !Not [!Equals [!Ref GitHubRepositoryId, ""]]
 
 Resources:
   EcrRepository:
@@ -113,7 +132,13 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}"
+                token.actions.githubusercontent.com:sub: !If
+                  - UsesImmutableSubject
+                  - !Sub
+                    - "repo:${Owner}@${GitHubOwnerId}/${Repo}@${GitHubRepositoryId}:ref:refs/heads/${GitHubBranch}"
+                    - Owner: !Select [0, !Split ["/", !Ref GitHubRepository]]
+                      Repo: !Select [1, !Split ["/", !Ref GitHubRepository]]
+                  - !Sub "repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}"
       Policies:
         - PolicyName: deploy
           PolicyDocument:

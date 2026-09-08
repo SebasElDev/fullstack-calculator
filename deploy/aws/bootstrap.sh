@@ -16,6 +16,9 @@
 #   SERVICE_STACK=${PROJECT_NAME}-service
 #   GITHUB_REPOSITORY=SebasElDev/fullstack-calculator
 #   GITHUB_BRANCH=main
+#   GITHUB_OWNER_ID / GITHUB_REPOSITORY_ID   (resolved with `gh` when unset;
+#                                  needed for the immutable OIDC subject that
+#                                  repositories created after 2026-07-15 use)
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -24,8 +27,22 @@ FOUNDATION_STACK="${FOUNDATION_STACK:-${PROJECT_NAME}-foundation}"
 SERVICE_STACK="${SERVICE_STACK:-${PROJECT_NAME}-service}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-SebasElDev/fullstack-calculator}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+GITHUB_OWNER_ID="${GITHUB_OWNER_ID:-}"
+GITHUB_REPOSITORY_ID="${GITHUB_REPOSITORY_ID:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "==> Resolving the repository's OIDC subject"
+if [[ -z "$GITHUB_OWNER_ID" || -z "$GITHUB_REPOSITORY_ID" ]]; then
+  if command -v gh >/dev/null 2>&1; then
+    GITHUB_OWNER_ID="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.owner.id')"
+    GITHUB_REPOSITORY_ID="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.id')"
+    echo "    ${GITHUB_REPOSITORY}: owner id ${GITHUB_OWNER_ID}, repository id ${GITHUB_REPOSITORY_ID} (immutable subject)"
+  else
+    echo "    gh not found; using the classic subject repo:${GITHUB_REPOSITORY}:ref:refs/heads/${GITHUB_BRANCH}." >&2
+    echo "    Repositories created after 2026-07-15 need the immutable subject: set GITHUB_OWNER_ID and GITHUB_REPOSITORY_ID." >&2
+  fi
+fi
 
 echo "==> Checking for an existing GitHub OIDC provider in this account..."
 CREATE_OIDC_PROVIDER="true"
@@ -47,6 +64,8 @@ aws cloudformation deploy \
     ProjectName="$PROJECT_NAME" \
     GitHubRepository="$GITHUB_REPOSITORY" \
     GitHubBranch="$GITHUB_BRANCH" \
+    GitHubOwnerId="$GITHUB_OWNER_ID" \
+    GitHubRepositoryId="$GITHUB_REPOSITORY_ID" \
     ServiceStackName="$SERVICE_STACK" \
     CreateGitHubOidcProvider="$CREATE_OIDC_PROVIDER" \
   --no-fail-on-empty-changeset
