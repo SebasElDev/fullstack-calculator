@@ -172,6 +172,10 @@ Resources:
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStackResources
                   - cloudformation:GetTemplate
+                  # `aws cloudformation deploy` reads the current parameter
+                  # list of an existing stack before building an UPDATE
+                  # change set.
+                  - cloudformation:GetTemplateSummary
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:ExecuteChangeSet
