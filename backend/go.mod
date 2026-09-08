@@ -1,10 +1,11 @@
 module github.com/SebasElDev/fullstack-calculator/backend
 
-go 1.27.1
+go 1.27
+
+require github.com/gofiber/fiber/v3 v3.5.0
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
-	github.com/gofiber/fiber/v3 v3.5.0 // indirect
 	github.com/gofiber/schema v1.8.3 // indirect
 	github.com/gofiber/utils/v2 v2.4.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
