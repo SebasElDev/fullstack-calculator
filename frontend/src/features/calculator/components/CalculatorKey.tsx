@@ -39,7 +39,8 @@ const BASE_KEY_CLASSES = [
   "flex h-14 items-center justify-center rounded-2xl text-lg font-medium select-none",
   "transition-[background-color,transform,box-shadow] duration-100",
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-  "active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
+  "active:scale-95 aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
+  "aria-disabled:active:scale-100",
 ].join(" ");
 
 const KEY_VARIANTS: Record<KeyAction["type"], string> = {
@@ -66,6 +67,16 @@ export function CalculatorKey({ action, children, className }: CalculatorKeyProp
   const isCalculating = state.status === "calculating";
   const isPending = action.type === "operator" && state.pendingOperation === action.operation;
 
+  // `aria-disabled` rather than the native attribute: a disabled button leaves
+  // the accessibility tree, which drops focus to <body> on every calculation
+  // and makes a keyboard user tab back in. The press is ignored instead.
+  function handleClick() {
+    if (isCalculating) {
+      return;
+    }
+    press(action);
+  }
+
   return (
     <button
       type="button"
@@ -73,8 +84,7 @@ export function CalculatorKey({ action, children, className }: CalculatorKeyProp
       aria-label={descriptor.ariaLabel}
       aria-pressed={action.type === "operator" ? isPending : undefined}
       aria-disabled={isCalculating}
-      disabled={isCalculating}
-      onClick={() => press(action)}
+      onClick={handleClick}
       className={cn(
         BASE_KEY_CLASSES,
         KEY_VARIANTS[action.type],

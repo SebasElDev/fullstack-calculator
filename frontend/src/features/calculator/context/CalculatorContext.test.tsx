@@ -237,7 +237,7 @@ describe("CalculatorProvider", () => {
     });
   });
 
-  it("disables every key while a calculation is in flight", async () => {
+  it("ignores clicks while a calculation is in flight without moving focus", async () => {
     const deferred = createDeferred<CalculateResponse>();
     const client = createMockApiClient();
     client.calculate.mockReturnValueOnce(deferred.promise);
@@ -246,9 +246,14 @@ describe("CalculatorProvider", () => {
     await press(user, "2", "add", "3", "equals");
 
     const digitKey = screen.getByTestId("key-5");
-    expect(digitKey).toBeDisabled();
     expect(digitKey).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByTestId("keypad")).toHaveAttribute("aria-busy", "true");
+    // Not the native attribute: a disabled button leaves the accessibility tree
+    // and drops the focused key to <body> on every calculation.
+    expect(digitKey).not.toBeDisabled();
+
+    await user.click(digitKey);
+    expect(displayValue()).toBe("3");
 
     await act(async () => {
       deferred.resolve({ operation: "add", operands: [2, 3], result: 5 });
@@ -257,7 +262,7 @@ describe("CalculatorProvider", () => {
     await waitFor(() => {
       expect(displayValue()).toBe("5");
     });
-    expect(screen.getByTestId("key-5")).toBeEnabled();
+    expect(screen.getByTestId("key-5")).toHaveAttribute("aria-disabled", "false");
     expect(client.calculate).toHaveBeenCalledTimes(1);
   });
 
