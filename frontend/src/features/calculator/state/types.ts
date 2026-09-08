@@ -28,6 +28,13 @@ export interface CalculatorState {
   pendingOperation: BinaryOperationName | null;
   /** When true the next digit replaces `input` instead of appending to it. */
   overwrite: boolean;
+  /**
+   * True once `input` holds an operand the user supplied for the pending
+   * operation — a typed number, or the result of a unary key applied to one.
+   * It is what tells `=` and the next operator that the chain can be settled;
+   * `overwrite` cannot stand in for it, because a result sets `overwrite` too.
+   */
+  hasRightOperand: boolean;
   /** Secondary display line, e.g. `2 +` or `2 + 3 =`. */
   expression: string | null;
   status: CalculatorStatus;
@@ -78,5 +85,11 @@ export type CalculatorAction =
       accumulator: number | null;
       pendingOperation: BinaryOperationName | null;
       expression: string | null;
+      /**
+       * Whether the result itself is the right operand of `pendingOperation`
+       * (true after a unary key pressed mid-chain, false after `=` or after an
+       * operator settled the chain and started a new one).
+       */
+      hasRightOperand: boolean;
     }
   | { type: "CALCULATION_FAILED"; error: CalculatorError };

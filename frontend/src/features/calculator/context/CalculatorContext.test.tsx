@@ -130,6 +130,31 @@ describe("CalculatorProvider", () => {
     expect(client.calculate).toHaveBeenLastCalledWith({ operation: "add", operands: [2, 3] });
   });
 
+  it("settles the pending operation when an operator follows a unary result", async () => {
+    const client = createMockApiClient();
+    client.calculate
+      .mockResolvedValueOnce({ operation: "sqrt", operands: [9], result: 3 })
+      .mockResolvedValueOnce({ operation: "add", operands: [2, 3], result: 5 });
+    const { user } = renderCalculator(client);
+
+    await press(user, "2", "add", "9", "sqrt");
+    await waitFor(() => {
+      expect(displayValue()).toBe("3");
+    });
+
+    await press(user, "multiply");
+    await waitFor(() => {
+      expect(displayValue()).toBe("5");
+    });
+
+    expect(client.calculate.mock.calls).toEqual([
+      [{ operation: "sqrt", operands: [9] }],
+      [{ operation: "add", operands: [2, 3] }],
+    ]);
+    expect(historyLines()).toEqual(["2 + 3 = 5", "\u221a(9) = 3"]);
+    expect(screen.getByTestId("display-expression")).toHaveTextContent("5 \u00d7");
+  });
+
   it("replaces the pending operator when two are pressed in a row", async () => {
     const client = createMockApiClient();
     const { user } = renderCalculator(client);

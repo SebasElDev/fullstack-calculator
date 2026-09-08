@@ -17,6 +17,7 @@ export function createInitialState(): CalculatorState {
     accumulator: null,
     pendingOperation: null,
     overwrite: false,
+    hasRightOperand: false,
     expression: null,
     status: "idle",
     error: null,
@@ -40,29 +41,38 @@ export function calculatorReducer(
   switch (action.type) {
     case "DIGIT": {
       if (state.status === "error") {
-        return { ...clearedState(state), input: action.digit };
+        return { ...clearedState(state), input: action.digit, hasRightOperand: true };
       }
       if (state.overwrite) {
-        return { ...state, input: action.digit, overwrite: false };
+        return { ...state, input: action.digit, overwrite: false, hasRightOperand: true };
       }
       if (state.input.length >= MAX_INPUT_LENGTH) {
         return state;
       }
       const input = state.input === INITIAL_INPUT ? action.digit : `${state.input}${action.digit}`;
-      return { ...state, input };
+      return { ...state, input, hasRightOperand: true };
     }
 
     case "DECIMAL": {
       if (state.status === "error") {
-        return { ...clearedState(state), input: `${INITIAL_INPUT}${DECIMAL_POINT}` };
+        return {
+          ...clearedState(state),
+          input: `${INITIAL_INPUT}${DECIMAL_POINT}`,
+          hasRightOperand: true,
+        };
       }
       if (state.overwrite) {
-        return { ...state, input: `${INITIAL_INPUT}${DECIMAL_POINT}`, overwrite: false };
+        return {
+          ...state,
+          input: `${INITIAL_INPUT}${DECIMAL_POINT}`,
+          overwrite: false,
+          hasRightOperand: true,
+        };
       }
       if (state.input.includes(DECIMAL_POINT) || state.input.length >= MAX_INPUT_LENGTH) {
         return state;
       }
-      return { ...state, input: `${state.input}${DECIMAL_POINT}` };
+      return { ...state, input: `${state.input}${DECIMAL_POINT}`, hasRightOperand: true };
     }
 
     case "BACKSPACE": {
@@ -70,11 +80,11 @@ export function calculatorReducer(
         return clearedState(state);
       }
       if (state.overwrite) {
-        return { ...state, input: INITIAL_INPUT, overwrite: false };
+        return { ...state, input: INITIAL_INPUT, overwrite: false, hasRightOperand: true };
       }
       const trimmed = state.input.slice(0, -1);
       const input = trimmed === "" || trimmed === "-" ? INITIAL_INPUT : trimmed;
-      return { ...state, input };
+      return { ...state, input, hasRightOperand: true };
     }
 
     case "CLEAR":
@@ -87,6 +97,7 @@ export function calculatorReducer(
         pendingOperation: action.operation,
         expression: action.expression,
         overwrite: true,
+        hasRightOperand: false,
         status: "idle",
         error: null,
       };
@@ -102,6 +113,7 @@ export function calculatorReducer(
         pendingOperation: action.pendingOperation,
         expression: action.expression,
         overwrite: true,
+        hasRightOperand: action.hasRightOperand,
         status: "idle",
         error: null,
         history: [action.entry, ...state.history].slice(0, HISTORY_LIMIT),
@@ -113,6 +125,7 @@ export function calculatorReducer(
         accumulator: null,
         pendingOperation: null,
         overwrite: true,
+        hasRightOperand: false,
         status: "error",
         error: action.error,
       };

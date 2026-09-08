@@ -30,6 +30,7 @@ describe("calculatorReducer", () => {
       accumulator: null,
       pendingOperation: null,
       overwrite: false,
+      hasRightOperand: false,
       expression: null,
       status: "idle",
       error: null,
@@ -74,7 +75,7 @@ describe("calculatorReducer", () => {
         }),
         { type: "DIGIT", digit: "8" },
       );
-      expect(next).toEqual(stateWith({ input: "8", history }));
+      expect(next).toEqual(stateWith({ input: "8", history, hasRightOperand: true }));
     });
   });
 
@@ -201,6 +202,7 @@ describe("calculatorReducer", () => {
         accumulator: null,
         pendingOperation: null,
         expression: "2 + 3 =",
+        hasRightOperand: false,
       });
       expect(next).toMatchObject({
         input: "42",
@@ -220,6 +222,7 @@ describe("calculatorReducer", () => {
         accumulator: 5,
         pendingOperation: "multiply",
         expression: "5 ×",
+        hasRightOperand: false,
       });
       expect(next).toMatchObject({
         input: "5",
@@ -240,10 +243,54 @@ describe("calculatorReducer", () => {
         accumulator: null,
         pendingOperation: null,
         expression: "3 × 3 =",
+        hasRightOperand: false,
       });
       expect(next.history).toHaveLength(HISTORY_LIMIT);
       expect(next.history[0]?.id).toBe("new");
       expect(next.history.at(-1)?.id).toBe(seeded.at(-2)?.id);
+    });
+  });
+
+  describe("hasRightOperand", () => {
+    it("is set by every key that edits the number being typed", () => {
+      const typed = stateWith({ input: "12", overwrite: true });
+      expect(calculatorReducer(typed, { type: "DIGIT", digit: "3" }).hasRightOperand).toBe(true);
+      expect(calculatorReducer(typed, { type: "DECIMAL" }).hasRightOperand).toBe(true);
+      expect(calculatorReducer(typed, { type: "BACKSPACE" }).hasRightOperand).toBe(true);
+    });
+
+    it("is cleared while an operator waits for its right operand", () => {
+      const next = calculatorReducer(stateWith({ input: "2", hasRightOperand: true }), {
+        type: "OPERATOR_SELECTED",
+        operation: "add",
+        accumulator: 2,
+        expression: "2 +",
+      });
+      expect(next.hasRightOperand).toBe(false);
+    });
+
+    it("is cleared by AC and by a failed calculation", () => {
+      const dirty = stateWith({ input: "9", hasRightOperand: true });
+      expect(calculatorReducer(dirty, { type: "CLEAR" }).hasRightOperand).toBe(false);
+      expect(
+        calculatorReducer(dirty, {
+          type: "CALCULATION_FAILED",
+          error: { code: "INTERNAL_ERROR", message: "boom" },
+        }).hasRightOperand,
+      ).toBe(false);
+    });
+
+    it("is taken from the action on a successful calculation", () => {
+      const next = calculatorReducer(stateWith({ status: "calculating" }), {
+        type: "CALCULATION_SUCCEEDED",
+        result: 3,
+        entry: entry("a", "\u221a(9)", 3),
+        accumulator: 2,
+        pendingOperation: "add",
+        expression: "2 +",
+        hasRightOperand: true,
+      });
+      expect(next.hasRightOperand).toBe(true);
     });
   });
 

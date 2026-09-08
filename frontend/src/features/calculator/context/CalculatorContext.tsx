@@ -37,6 +37,8 @@ interface ChainState {
   accumulator: number | null;
   pendingOperation: BinaryOperationName | null;
   expression: string | null;
+  /** Whether the result is itself the right operand of `pendingOperation`. */
+  hasRightOperand: boolean;
 }
 
 /** One round trip: what to send, how to label it, what to do with the answer. */
@@ -98,6 +100,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
           accumulator: chain.accumulator,
           pendingOperation: chain.pendingOperation,
           expression: chain.expression,
+          hasRightOperand: chain.hasRightOperand,
         });
       } catch (cause) {
         apply({ type: "CALCULATION_FAILED", error: toCalculatorError(cause) });
@@ -138,14 +141,17 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
           const { accumulator, pendingOperation } = current;
           // A right operand has been typed: settle the pending operation first,
           // then continue the chain with the operator just pressed.
-          if (pendingOperation !== null && accumulator !== null && !current.overwrite) {
+          if (pendingOperation !== null && accumulator !== null && current.hasRightOperand) {
             void runCalculation({
               request: { operation: pendingOperation, operands: [accumulator, operand] },
               expression: binaryExpression(accumulator, pendingOperation, operand),
+              // The answer becomes the left operand of the operator just
+              // pressed, which is now waiting for a right operand of its own.
               next: (result) => ({
                 accumulator: result,
                 pendingOperation: action.operation,
                 expression: pendingExpression(result, action.operation),
+                hasRightOperand: false,
               }),
             });
             return;
@@ -177,6 +183,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
                 current.pendingOperation === null
                   ? completedExpression(expression)
                   : current.expression,
+              hasRightOperand: current.pendingOperation !== null,
             }),
           });
           return;
@@ -199,6 +206,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
               accumulator: null,
               pendingOperation: null,
               expression: completedExpression(expression),
+              hasRightOperand: false,
             }),
           });
           return;
