@@ -1,6 +1,8 @@
 package fiberadapter
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/SebasElDev/fullstack-calculator/backend/internal/adapter/http/dto"
@@ -29,6 +31,11 @@ func (h handlers) operations(c fiber.Ctx) error {
 // division by zero — is returned to the error boundary, which owns the mapping
 // to status codes.
 func (h handlers) calculate(c fiber.Ctx) error {
+	if len(c.Body()) > maxRequestBodyBytes {
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge,
+			fmt.Sprintf("request body exceeds %d bytes", maxRequestBodyBytes))
+	}
+
 	request, err := dto.ParseCalculateRequest(c.Body())
 	if err != nil {
 		return err
@@ -45,5 +52,5 @@ func (h handlers) calculate(c fiber.Ctx) error {
 // notFound answers unknown API routes with the JSON error envelope instead of
 // Fiber's plain-text default or the SPA shell.
 func (h handlers) notFound(c fiber.Ctx) error {
-	return newNotFoundError(c)
+	return newNotFoundError(c.Method(), c.Path())
 }

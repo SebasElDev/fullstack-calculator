@@ -31,19 +31,38 @@ func resolveError(err error) (int, dto.ErrorResponse) {
 	return dto.MapError(err)
 }
 
+// routeNotFoundError is the "unknown route" error of this API. It carries a
+// descriptive message but still answers true to errors.Is(err, fiber.ErrNotFound),
+// which Fiber relies on to tell an ordinary miss from a broken middleware
+// chain when it walks the stack for a request the server itself rejected.
+type routeNotFoundError struct {
+	cause *fiber.Error
+}
+
 // newNotFoundError builds the single "unknown route" error used both by the
 // API catch-all and by the static handler when there is no SPA shell to serve.
-func newNotFoundError(c fiber.Ctx) error {
-	return fiber.NewError(fiber.StatusNotFound, "no route for "+c.Method()+" "+c.Path())
+func newNotFoundError(method, path string) error {
+	return routeNotFoundError{cause: fiber.NewError(fiber.StatusNotFound, "no route for "+method+" "+path)}
 }
+
+func (e routeNotFoundError) Error() string { return e.cause.Message }
+
+// Unwrap exposes the underlying *fiber.Error so resolveError sees its status.
+func (e routeNotFoundError) Unwrap() error { return e.cause }
+
+// Is makes every route miss equivalent to Fiber's own sentinel.
+func (routeNotFoundError) Is(target error) bool { return target == fiber.ErrNotFound }
 
 // errorHandler is the application's error boundary: every error returned by a
 // handler or by the recover middleware becomes a JSON error response here.
 //
-// Rejections are logged here as well as in the request logger because some of
-// them never reach the middleware chain: fasthttp raises a body-limit error
-// while it is still reading the request, so this boundary is the only place
-// that sees every request the server turned away.
+// The request logger reports the outcome of every request that runs through
+// the middleware chain. Requests the HTTP server rejects while still reading
+// them (a body over transportBodyLimit) take a different route: Fiber walks the
+// middleware chain without a matching handler, so the logger records a miss,
+// and only then hands the real error to this boundary. Whenever the status
+// about to be sent differs from the one that was logged — or nothing was
+// logged at all — the boundary writes the authoritative line itself.
 func errorHandler(logger *slog.Logger) fiber.ErrorHandler {
 	return func(c fiber.Ctx, err error) error {
 		status, body := resolveError(err)
@@ -53,10 +72,12 @@ func errorHandler(logger *slog.Logger) fiber.ErrorHandler {
 			slog.Int("status", status),
 			slog.String("request_id", c.RequestID()),
 		}
-		if status >= fiber.StatusInternalServerError {
+		loggedStatus, _ := c.Locals(requestLoggedKey).(int)
+		switch {
+		case status >= fiber.StatusInternalServerError:
 			// The generic message went to the client; the cause goes to the log.
 			logger.Error("request failed", append(attrs, slog.Any("error", err))...)
-		} else {
+		case loggedStatus != status:
 			logger.Warn("request rejected", append(attrs, slog.String("code", string(body.Error.Code)))...)
 		}
 		return c.Status(status).JSON(body)

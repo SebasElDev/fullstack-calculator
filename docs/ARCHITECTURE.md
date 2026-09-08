@@ -194,9 +194,11 @@ var (
 | unknown route / method under `/api` | 404 | `NOT_FOUND` |
 | anything else | 500 | `INTERNAL_ERROR` (message is generic; real error is logged) |
 
-A body over the 1 KiB limit is rejected by the HTTP server (fasthttp) before
-the request reaches the application, so that 413 carries a plain-text body;
-the error boundary still logs it.
+Request bodies are capped twice: the handler rejects anything over 1 KiB with
+a 413 `INVALID_REQUEST` envelope (logged like any other 4xx), and the HTTP
+server itself refuses bodies over 64 KiB while still reading them, as a
+defence against abusive payloads. The latter never runs a handler, so the
+error boundary logs it with the status that was actually sent.
 
 400 vs 422: 400 means "your request is malformed for this API"; 422 means "your
 request is valid but the mathematics has no finite answer".
@@ -214,7 +216,7 @@ Routes (see `api/openapi.yaml` for schemas):
 
 Middleware: `recover` (panics → 500 `INTERNAL_ERROR`), `requestid`, structured
 request logging (`log/slog`), `cors` only when `CORS_ALLOWED_ORIGINS` is set
-(same-origin deployments need none). Body limit small (1 KiB is plenty).
+(same-origin deployments need none). Body limits as described in §2.4.
 
 Server lifecycle (`cmd/api/main.go`): listen on `:PORT`, trap
 `SIGINT`/`SIGTERM`, `ShutdownWithTimeout(SHUTDOWN_TIMEOUT)`. Version string is

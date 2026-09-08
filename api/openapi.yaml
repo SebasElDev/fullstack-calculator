@@ -127,9 +127,16 @@ paths:
           $ref: "#/components/responses/NotFound"
         "413":
           description: |
-            Body larger than the server's limit (1 KiB — far above any valid
-            request). Raised by the HTTP server before the request reaches the
-            application, so the body is plain text rather than the JSON envelope.
+            Body larger than 1 KiB (far above any valid request). Reported with
+            the standard envelope and code `INVALID_REQUEST`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: INVALID_REQUEST
+                  message: request body exceeds 1024 bytes
         "500":
           description: Unexpected failure (`INTERNAL_ERROR`). Never leaks internals.
           content:

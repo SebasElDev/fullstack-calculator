@@ -17,9 +17,15 @@ import (
 )
 
 const (
-	// bodyLimit caps request bodies. The largest legal request is an operation
-	// name plus two numbers, so a kibibyte is generous.
-	bodyLimit = 1024
+	// maxRequestBodyBytes is the application-level cap on request bodies: the
+	// largest legal request is an operation name plus two numbers, so a
+	// kibibyte is generous. Enforced by the handler so the rejection carries the
+	// JSON envelope and is logged like any other 4xx.
+	maxRequestBodyBytes = 1024
+	// transportBodyLimit is the hard ceiling enforced by the HTTP server while
+	// it is still reading the request, before any handler runs. It protects the
+	// process from abusive payloads; ordinary oversized bodies never reach it.
+	transportBodyLimit = 64 * 1024
 	// appName identifies the service in the Server header and in Fiber's config.
 	appName = "fullstack-calculator"
 
@@ -63,7 +69,7 @@ func New(opts Options) *fiber.App {
 
 	app := fiber.New(fiber.Config{
 		AppName:      appName,
-		BodyLimit:    bodyLimit,
+		BodyLimit:    transportBodyLimit,
 		ErrorHandler: errorHandler(logger),
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
@@ -104,6 +110,15 @@ func New(opts Options) *fiber.App {
 	return app
 }
 
+// localsKey is the private key type for values stored on the request context,
+// so no other package can collide with them.
+type localsKey int
+
+// requestLoggedKey holds the status the request logger reported for this
+// request. The error boundary compares it with the status it is about to send
+// and logs the rejection itself when the two differ.
+const requestLoggedKey localsKey = iota
+
 // requestLogger writes one structured line per request.
 func requestLogger(logger *slog.Logger) fiber.Handler {
 	return func(c fiber.Ctx) error {
@@ -124,6 +139,7 @@ func requestLogger(logger *slog.Logger) fiber.Handler {
 			slog.Duration("duration", time.Since(start)),
 			slog.String("request_id", c.RequestID()),
 		)
+		c.Locals(requestLoggedKey, status)
 		return err
 	}
 }

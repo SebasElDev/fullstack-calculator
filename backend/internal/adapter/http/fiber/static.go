@@ -33,7 +33,7 @@ func mountStatic(app *fiber.App, dir string, logger *slog.Logger) {
 		IndexNames: []string{indexFile},
 		NotFoundHandler: func(c fiber.Ctx) error {
 			if !hasShell {
-				return newNotFoundError(c)
+				return newNotFoundError(c.Method(), c.Path())
 			}
 			return c.Status(fiber.StatusOK).Type("html", "utf-8").Send(shell)
 		},

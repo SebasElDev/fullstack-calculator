@@ -1,6 +1,7 @@
 package fiberadapter_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -252,14 +254,66 @@ func TestCalculateRejectsInvalidBodies(t *testing.T) {
 	}
 }
 
-// TestCalculateRejectsOversizedBodies runs against a real listener: the body
-// limit is enforced by the server before the router sees the request, which the
-// in-memory app.Test transport cannot reproduce.
+// TestCalculateRejectsOversizedBodies covers the application-level limit: the
+// rejection carries the JSON envelope and never reaches the use case.
 func TestCalculateRejectsOversizedBodies(t *testing.T) {
 	t.Parallel()
 
 	fake := &fakeCalculator{}
 	app := newTestApp(t, fiberadapter.Options{Calculator: fake})
+
+	operands := strings.Repeat("1234567890,", 200)
+	body := `{"operation":"add","operands":[` + strings.TrimSuffix(operands, ",") + `]}`
+
+	res, payload := do(t, app, http.MethodPost, "/api/v1/calculate", body)
+	if res.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d; want 413. body: %s", res.StatusCode, payload)
+	}
+	got := decode[dto.ErrorResponse](t, payload)
+	if got.Error.Code != dto.CodeInvalidRequest {
+		t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeInvalidRequest)
+	}
+	if !strings.Contains(got.Error.Message, "1024 bytes") {
+		t.Errorf("message = %q; want it to name the limit", got.Error.Message)
+	}
+	if fake.calls != 0 {
+		t.Errorf("the use case was called %d times for an oversized body; want 0", fake.calls)
+	}
+}
+
+// syncBuffer is a goroutine-safe bytes.Buffer for capturing logs written by
+// the server while the test goroutine reads them.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestTransportLimitIsLoggedWithItsRealStatus runs against a real listener: a
+// body over the transport ceiling is rejected by the HTTP server before the
+// router sees the request, which the in-memory app.Test transport cannot
+// reproduce. The response must still be the JSON envelope, and the log must
+// carry the status that was actually sent.
+func TestTransportLimitIsLoggedWithItsRealStatus(t *testing.T) {
+	t.Parallel()
+
+	logs := &syncBuffer{}
+	fake := &fakeCalculator{}
+	app := newTestApp(t, fiberadapter.Options{
+		Calculator: fake,
+		Logger:     slog.New(slog.NewJSONHandler(logs, nil)),
+	})
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -268,8 +322,7 @@ func TestCalculateRejectsOversizedBodies(t *testing.T) {
 	go func() { _ = app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}) }()
 	t.Cleanup(func() { _ = app.Shutdown() })
 
-	operands := strings.Repeat("1234567890,", 200)
-	body := `{"operation":"add","operands":[` + strings.TrimSuffix(operands, ",") + `]}`
+	body := `{"operation":"add","operands":[1,` + strings.Repeat("1", 66*1024) + `]}`
 
 	url := "http://" + listener.Addr().String() + "/api/v1/calculate"
 	res, err := http.Post(url, fiber.MIMEApplicationJSON, strings.NewReader(body)) //nolint:noctx // short-lived test request
@@ -277,12 +330,36 @@ func TestCalculateRejectsOversizedBodies(t *testing.T) {
 		t.Fatalf("POST %s failed: %v", url, err)
 	}
 	t.Cleanup(func() { _ = res.Body.Close() })
+	payload, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("reading the body failed: %v", err)
+	}
 
 	if res.StatusCode != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status = %d; want 413", res.StatusCode)
+		t.Fatalf("status = %d; want 413. body: %s", res.StatusCode, payload)
+	}
+	if got := decode[dto.ErrorResponse](t, payload); got.Error.Code != dto.CodeInvalidRequest {
+		t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeInvalidRequest)
 	}
 	if fake.calls != 0 {
-		t.Errorf("the use case was called %d times for an oversized body; want 0", fake.calls)
+		t.Errorf("the use case was called %d times; want 0", fake.calls)
+	}
+
+	var rejected bool
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var entry struct {
+			Msg    string `json:"msg"`
+			Status int    `json:"status"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		if entry.Msg == "request rejected" && entry.Status == http.StatusRequestEntityTooLarge {
+			rejected = true
+		}
+	}
+	if !rejected {
+		t.Errorf("no \"request rejected\" log line with status 413. logs:\n%s", logs.String())
 	}
 }
 
