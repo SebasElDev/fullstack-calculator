@@ -73,6 +73,7 @@ export const ERROR_CODES = [
   "DIVISION_BY_ZERO",
   "UNDEFINED_RESULT",
   "RESULT_OUT_OF_RANGE",
+  "NOT_FOUND",
   "INTERNAL_ERROR",
 ] as const;
 

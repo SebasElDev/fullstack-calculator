@@ -329,8 +329,8 @@ func TestUnknownRoutesAnswerWithJSON(t *testing.T) {
 				t.Fatalf("%s %s = %d; want 404. body: %s", tc.method, tc.target, res.StatusCode, payload)
 			}
 			got := decode[dto.ErrorResponse](t, payload)
-			if got.Error.Code != dto.CodeInvalidRequest {
-				t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeInvalidRequest)
+			if got.Error.Code != dto.CodeNotFound {
+				t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeNotFound)
 			}
 			if got.Error.Message == "" {
 				t.Error("message is empty")
@@ -432,8 +432,8 @@ func TestStaticHostingServesTheSPA(t *testing.T) {
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("GET /api/v1/nope = %d; want 404", res.StatusCode)
 		}
-		if got := decode[dto.ErrorResponse](t, payload); got.Error.Code != dto.CodeInvalidRequest {
-			t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeInvalidRequest)
+		if got := decode[dto.ErrorResponse](t, payload); got.Error.Code != dto.CodeNotFound {
+			t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeNotFound)
 		}
 	})
 
@@ -459,8 +459,8 @@ func TestStaticHostingWithoutAShell(t *testing.T) {
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("GET /history/42 = %d; want 404. body: %s", res.StatusCode, payload)
 	}
-	if got := decode[dto.ErrorResponse](t, payload); got.Error.Code != dto.CodeInvalidRequest {
-		t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeInvalidRequest)
+	if got := decode[dto.ErrorResponse](t, payload); got.Error.Code != dto.CodeNotFound {
+		t.Errorf("code = %q; want %q", got.Error.Code, dto.CodeNotFound)
 	}
 
 	res, payload = do(t, app, http.MethodGet, "/robots.txt", "")

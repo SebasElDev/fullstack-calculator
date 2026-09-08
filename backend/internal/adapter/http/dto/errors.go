@@ -19,6 +19,7 @@ const (
 	CodeDivisionByZero       ErrorCode = "DIVISION_BY_ZERO"
 	CodeUndefinedResult      ErrorCode = "UNDEFINED_RESULT"
 	CodeResultOutOfRange     ErrorCode = "RESULT_OUT_OF_RANGE"
+	CodeNotFound             ErrorCode = "NOT_FOUND"
 	CodeInternalError        ErrorCode = "INTERNAL_ERROR"
 )
 

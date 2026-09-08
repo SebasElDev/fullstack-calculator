@@ -42,6 +42,8 @@ paths:
               example:
                 status: ok
                 version: 1.0.0
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /operations:
     get:
@@ -66,6 +68,8 @@ paths:
                     symbol: "√"
                     arity: 1
                     description: Principal square root
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /calculate:
     post:
@@ -119,6 +123,13 @@ paths:
                 error:
                   code: DIVISION_BY_ZERO
                   message: division by zero is undefined
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: |
+            Body larger than the server's limit (1 KiB — far above any valid
+            request). Raised by the HTTP server before the request reaches the
+            application, so the body is plain text rather than the JSON envelope.
         "500":
           description: Unexpected failure (`INTERNAL_ERROR`). Never leaks internals.
           content:
@@ -127,6 +138,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
 components:
+  responses:
+    NotFound:
+      description: No route matches the method and path under `/api` (`NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: NOT_FOUND
+              message: no route for GET /api/v1/nope
+
   schemas:
     OperationName:
       type: string
@@ -223,6 +246,7 @@ components:
         - DIVISION_BY_ZERO       # 422
         - UNDEFINED_RESULT       # 422 NaN (sqrt of negative, 0^0 style indeterminates are NOT errors: math.Pow(0,0)=1)
         - RESULT_OUT_OF_RANGE    # 422 ±Inf (overflow)
+        - NOT_FOUND              # 404 unknown route or method under /api
         - INTERNAL_ERROR         # 500
 
     ErrorResponse:
