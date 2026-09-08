@@ -5,9 +5,15 @@ on:
     branches: ["**"]
   pull_request:
 
+# Every job gets a read-only token; the deploy job re-grants what it needs.
+permissions:
+  contents: read
+
+# Branch and PR runs cancel their predecessors; main runs queue so a deploy is
+# never interrupted mid-flight.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
@@ -21,23 +27,11 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      - name: gofmt check
-        working-directory: backend
-        run: |
-          fmt_out="$(gofmt -l .)"
-          if [ -n "$fmt_out" ]; then
-            echo "gofmt found unformatted files:"
-            echo "$fmt_out"
-            exit 1
-          fi
+      - name: lint
+        run: make lint-backend
 
-      - name: go vet
-        working-directory: backend
-        run: go vet ./...
-
-      - name: go test
-        working-directory: backend
-        run: go test -race -cover ./...
+      - name: test
+        run: make test-backend
 
   frontend:
     name: frontend
@@ -56,20 +50,13 @@ jobs:
         run: npm ci
 
       - name: lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: typecheck
-        working-directory: frontend
-        run: npm run typecheck
+        run: make lint-frontend
 
       - name: test
-        working-directory: frontend
-        run: npm run test -- --coverage
+        run: make test-frontend
 
       - name: build
-        working-directory: frontend
-        run: npm run build
+        run: make build-frontend
 
   docker:
     name: docker
@@ -131,57 +118,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The same script an operator runs locally: update the service stack,
+      # wait for RUNNING, smoke-test /health, print the URL.
       - name: deploy service stack
-        run: |
-          aws cloudformation deploy \
-            --template-file deploy/aws/service.yaml \
-            --stack-name "${{ vars.SERVICE_STACK_NAME }}" \
-            --parameter-overrides \
-              ImageUri=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }} \
-              AccessRoleArn=${{ vars.APP_RUNNER_ACCESS_ROLE_ARN }} \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --no-fail-on-empty-changeset
-
-      - name: wait for app runner service to be running
-        run: |
-          set -euo pipefail
-          service_arn="$(aws cloudformation describe-stacks \
-            --stack-name "${{ vars.SERVICE_STACK_NAME }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='ServiceArn'].OutputValue" \
-            --output text)"
-
-          elapsed=0
-          timeout=900
-          interval=15
-
-          while true; do
-            status="$(aws apprunner describe-service \
-              --service-arn "$service_arn" \
-              --query "Service.Status" --output text)"
-            echo "App Runner service status: $status (elapsed ${elapsed}s)"
-
-            case "$status" in
-              RUNNING)
-                break
-                ;;
-              *_FAILED)
-                echo "App Runner service entered a failed state: $status"
-                exit 1
-                ;;
-            esac
-
-            if [ "$elapsed" -ge "$timeout" ]; then
-              echo "Timed out waiting for App Runner service to reach RUNNING"
-              exit 1
-            fi
-
-            sleep "$interval"
-            elapsed=$((elapsed + interval))
-          done
-
-          service_url="$(aws apprunner describe-service \
-            --service-arn "$service_arn" \
-            --query "Service.ServiceUrl" --output text)"
-          echo "Service URL: https://${service_url}"
-          echo "### Deployed :rocket:" >> "$GITHUB_STEP_SUMMARY"
-          echo "https://${service_url}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SERVICE_STACK: ${{ vars.SERVICE_STACK_NAME }}
+          APP_RUNNER_ACCESS_ROLE_ARN: ${{ vars.APP_RUNNER_ACCESS_ROLE_ARN }}
+          IMAGE_URI: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+        run: ./deploy/aws/deploy.sh

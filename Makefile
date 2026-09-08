@@ -7,7 +7,7 @@ VERSION       := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 AWS_REGION    ?= us-east-1
 PROJECT_NAME  ?= fullstack-calculator
 
-.PHONY: help dev dev-api dev-web install test test-backend test-frontend lint build docker-build docker-run bootstrap deploy destroy
+.PHONY: help dev dev-api dev-web install test test-backend test-frontend lint lint-backend lint-frontend build build-backend build-frontend docker-build docker-run bootstrap deploy destroy
 
 help: ## Show this help
 	@echo "fullstack-calculator — available targets:"
@@ -31,15 +31,24 @@ test: test-backend test-frontend ## Run backend and frontend test suites
 test-backend: ## Run Go tests with race detector and coverage
 	cd backend && go test -race -cover ./...
 
-test-frontend: ## Run frontend tests
-	cd frontend && npm run test
+test-frontend: ## Run Vitest with the coverage thresholds enforced
+	cd frontend && npm run test:coverage
 
-lint: ## Lint and typecheck both backend and frontend
-	cd backend && gofmt -l . && go vet ./...
-	cd frontend && npx biome check . && npx tsc --noEmit
+lint: lint-backend lint-frontend ## Lint and typecheck both backend and frontend
 
-build: ## Build production frontend assets and the Go binary
+lint-backend: ## gofmt (fails on unformatted files) and go vet
+	cd backend && unformatted="$$(gofmt -l .)" && test -z "$$unformatted" || { echo "gofmt: unformatted files:"; echo "$$unformatted"; exit 1; }
+	cd backend && go vet ./...
+
+lint-frontend: ## Biome lint/format check and TypeScript typecheck
+	cd frontend && npm run lint && npm run typecheck
+
+build: build-frontend build-backend ## Build production frontend assets and the Go binary
+
+build-frontend: ## Build the SPA into frontend/dist
 	cd frontend && npm run build
+
+build-backend: ## Build the Go binary into backend/bin/api
 	cd backend && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/api ./cmd/api
 
 docker-build: ## Build the production Docker image

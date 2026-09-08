@@ -1,6 +1,7 @@
-# Version control
+# Version control and tooling metadata
 .git
 .gitignore
+.claude
 
 # Docs and non-build metadata
 docs
@@ -14,9 +15,9 @@ LICENSE
 .vscode
 .idea
 
-# Node
-frontend/node_modules
-frontend/dist
+# Node (anchored and nested — worktrees or stray copies must never be sent)
+**/node_modules
+**/dist
 frontend/coverage
 frontend/.vite
 

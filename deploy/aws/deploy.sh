@@ -12,6 +12,9 @@
 #   SERVICE_STACK=${PROJECT_NAME}-service
 #   ECR_REPOSITORY_URI            (read from the foundation stack if unset)
 #   APP_RUNNER_ACCESS_ROLE_ARN    (read from the foundation stack if unset)
+#   IMAGE_URI                     (optional: a prebuilt, already-pushed image;
+#                                  skips the build/push step — this is how CI
+#                                  reuses the image it just built)
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -22,33 +25,37 @@ SERVICE_STACK="${SERVICE_STACK:-${PROJECT_NAME}-service}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-if [[ -z "${ECR_REPOSITORY_URI:-}" ]]; then
-  ECR_REPOSITORY_URI="$(aws cloudformation describe-stacks --region "$AWS_REGION" \
-    --stack-name "$FOUNDATION_STACK" \
-    --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)"
-fi
-
 if [[ -z "${APP_RUNNER_ACCESS_ROLE_ARN:-}" ]]; then
   APP_RUNNER_ACCESS_ROLE_ARN="$(aws cloudformation describe-stacks --region "$AWS_REGION" \
     --stack-name "$FOUNDATION_STACK" \
     --query "Stacks[0].Outputs[?OutputKey=='AppRunnerEcrAccessRoleArn'].OutputValue" --output text)"
 fi
 
-VERSION="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
-IMAGE_URI="${ECR_REPOSITORY_URI}:${VERSION}"
+if [[ -n "${IMAGE_URI:-}" ]]; then
+  echo "==> Using prebuilt image ${IMAGE_URI}"
+else
+  if [[ -z "${ECR_REPOSITORY_URI:-}" ]]; then
+    ECR_REPOSITORY_URI="$(aws cloudformation describe-stacks --region "$AWS_REGION" \
+      --stack-name "$FOUNDATION_STACK" \
+      --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)"
+  fi
 
-echo "==> Logging in to ECR"
-aws ecr get-login-password --region "$AWS_REGION" \
-  | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI%%/*}"
+  VERSION="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+  IMAGE_URI="${ECR_REPOSITORY_URI}:${VERSION}"
 
-echo "==> Building and pushing ${IMAGE_URI}"
-docker buildx build \
-  --platform linux/amd64 \
-  --build-arg VERSION="$VERSION" \
-  --push \
-  -t "$IMAGE_URI" \
-  -f "${REPO_ROOT}/Dockerfile" \
-  "$REPO_ROOT"
+  echo "==> Logging in to ECR"
+  aws ecr get-login-password --region "$AWS_REGION" \
+    | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI%%/*}"
+
+  echo "==> Building and pushing ${IMAGE_URI}"
+  docker buildx build \
+    --platform linux/amd64 \
+    --build-arg VERSION="$VERSION" \
+    --push \
+    -t "$IMAGE_URI" \
+    -f "${REPO_ROOT}/Dockerfile" \
+    "$REPO_ROOT"
+fi
 
 echo "==> Deploying service stack: ${SERVICE_STACK}"
 aws cloudformation deploy \
@@ -98,3 +105,7 @@ curl -fsS "https://${SERVICE_URL}/health"
 echo
 
 echo "==> Deployed: https://${SERVICE_URL}"
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  printf '### Deployed\n\nhttps://%s\n' "$SERVICE_URL" >> "$GITHUB_STEP_SUMMARY"
+fi
