@@ -2,7 +2,7 @@
 
 # ---- stage: web -------------------------------------------------------------
 # Builds the Vite/React SPA into frontend/dist.
-FROM node:22-alpine AS web
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -11,9 +11,11 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- stage: api ---------------------------------------------------------
-# Builds the Go binary. TARGETPLATFORM/TARGETOS/TARGETARCH are populated
+# Builds the Go binary on the BUILD platform and cross-compiles for the target,
+# so `--platform linux/amd64` on Apple Silicon never runs under emulation.
+# TARGETPLATFORM/TARGETOS/TARGETARCH are populated
 # automatically by buildx (e.g. `docker buildx build --platform linux/amd64`).
-FROM golang:1.27-alpine AS api
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS api
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
