@@ -47,6 +47,7 @@ aws cloudformation deploy \
     ProjectName="$PROJECT_NAME" \
     GitHubRepository="$GITHUB_REPOSITORY" \
     GitHubBranch="$GITHUB_BRANCH" \
+    ServiceStackName="$SERVICE_STACK" \
     CreateGitHubOidcProvider="$CREATE_OIDC_PROVIDER" \
   --no-fail-on-empty-changeset
 

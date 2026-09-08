@@ -20,6 +20,13 @@ Parameters:
     Default: main
     Description: Branch allowed to assume the deploy role via OIDC.
 
+  ServiceStackName:
+    Type: String
+    Default: fullstack-calculator-service
+    Description: >
+      Name of the CloudFormation stack that owns the App Runner service
+      (deploy/aws/service.yaml). The deploy role may update that stack only.
+
   CreateGitHubOidcProvider:
     Type: String
     Default: "true"
@@ -144,8 +151,7 @@ Resources:
                   - cloudformation:DescribeChangeSet
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:DeleteChangeSet
-                  - cloudformation:DeleteStack
-                Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ProjectName}-service/*"
+                Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ServiceStackName}/*"
               - Sid: AppRunnerCreateAndList
                 Effect: Allow
                 Action:
@@ -157,10 +163,15 @@ Resources:
               - Sid: AppRunnerManageProjectService
                 Effect: Allow
                 Action:
+                  # DeleteService is what CloudFormation needs to roll back or
+                  # replace the service during an update; it is scoped to this
+                  # project's service ARN only.
                   - apprunner:Describe*
                   - apprunner:UpdateService
                   - apprunner:StartDeployment
+                  - apprunner:DeleteService
                   - apprunner:TagResource
+                  - apprunner:UntagResource
                 Resource: !Sub "arn:aws:apprunner:${AWS::Region}:${AWS::AccountId}:service/${ProjectName}-service/*"
               - Sid: PassAppRunnerAccessRole
                 Effect: Allow
