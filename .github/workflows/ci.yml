@@ -66,14 +66,22 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Buildx metadata provenance echoes the push-event payload (commit author
+      # emails included) into the job log, and the build-record artifact carries
+      # the same payload; both are switched off. Provenance mode is pinned so it
+      # does not flip to `max` when the repository becomes public.
       - name: build (no push)
         uses: docker/build-push-action@v6
+        env:
+          BUILDX_METADATA_PROVENANCE: disabled
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
           load: false
+          provenance: mode=min
           build-args: |
             VERSION=${{ github.sha }}
           cache-from: type=gha
@@ -95,11 +103,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Role ARNs are secrets rather than variables so the runner masks them,
+      # and the account id is masked for the rest of the job (it is embedded in
+      # the ECR registry hostname and every image reference).
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
 
       - name: login to ecr
         id: ecr-login
@@ -107,11 +119,15 @@ jobs:
 
       - name: build and push image
         uses: docker/build-push-action@v6
+        env:
+          BUILDX_METADATA_PROVENANCE: disabled
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          provenance: mode=min
           tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
           build-args: |
             VERSION=${{ github.sha }}
@@ -124,6 +140,6 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           SERVICE_STACK: ${{ vars.SERVICE_STACK_NAME }}
-          APP_RUNNER_ACCESS_ROLE_ARN: ${{ vars.APP_RUNNER_ACCESS_ROLE_ARN }}
+          APP_RUNNER_ACCESS_ROLE_ARN: ${{ secrets.APP_RUNNER_ACCESS_ROLE_ARN }}
           IMAGE_URI: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
         run: ./deploy/aws/deploy.sh
