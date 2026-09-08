@@ -1,6 +1,6 @@
-// Package internal_test enforces the dependency rule of the architecture
-// (docs/ARCHITECTURE.md §2.1) by inspecting the import graph of every package
-// in the module with go/build. Source code dependencies must point inwards
+// Package internal_test enforces the Clean Architecture dependency rule by
+// inspecting the import graph of every package in the module with go/build.
+// Source code dependencies must point inwards
 // only: the domain knows nothing, the use case knows the domain, the adapters
 // know the use case, and only the frameworks layer knows everything.
 package internal_test

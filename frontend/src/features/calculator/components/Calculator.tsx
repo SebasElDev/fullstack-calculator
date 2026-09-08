@@ -8,7 +8,7 @@ import { CalculatorProvider, useCalculator } from "@/features/calculator/context
 import { keyActionFromKeyboardEvent } from "@/features/calculator/state/keyboard";
 import { cn } from "@/lib/cn";
 
-/** Physical keyboard support (docs/ARCHITECTURE.md §3.4). */
+/** Physical keyboard support; the bindings live in `state/keyboard.ts`. */
 function useKeyboardControls(): void {
   const { press } = useCalculator();
 

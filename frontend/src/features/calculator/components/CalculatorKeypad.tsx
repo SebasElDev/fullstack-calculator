@@ -5,7 +5,7 @@ import type { KeyAction } from "@/features/calculator/state/types";
 import { cn } from "@/lib/cn";
 
 /**
- * Default 6 × 4 grid (docs/ARCHITECTURE.md §3.4). Every operation, digit, `.`,
+ * Default 6 × 4 grid. Every operation, digit, `.`,
  * `AC`, `⌫` and `=` is reachable.
  */
 export const KEYPAD_LAYOUT: readonly (readonly KeyAction[])[] = [

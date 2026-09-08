@@ -3,7 +3,7 @@
  *
  * The contract is the source of truth: every type here corresponds to a schema
  * under `components.schemas`. Keep the names identical so the two can be diffed
- * by eye (see docs/ARCHITECTURE.md §4).
+ * by eye.
  */
 
 /** `OperationName` members with arity 2. */

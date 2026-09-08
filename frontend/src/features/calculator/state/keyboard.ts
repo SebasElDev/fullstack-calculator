@@ -2,7 +2,7 @@ import type { Digit, KeyAction } from "@/features/calculator/state/types";
 
 export const DIGITS: readonly Digit[] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-/** Physical keys that map onto a keypad action (docs/ARCHITECTURE.md §3.4). */
+/** Physical keys that map onto a keypad action. */
 const KEY_BINDINGS: Record<string, KeyAction> = {
   ".": { type: "decimal" },
   "+": { type: "operator", operation: "add" },

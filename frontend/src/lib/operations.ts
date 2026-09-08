@@ -8,8 +8,8 @@ import type {
 /**
  * Presentation metadata for one operation.
  *
- * The symbols mirror `domain.Registry()` on the Go side (docs/ARCHITECTURE.md
- * §2.3); `GET /api/v1/operations` returns the same table at runtime.
+ * The symbols mirror `domain.Registry()` on the Go side; `GET /api/v1/operations`
+ * returns the same table at runtime.
  */
 export interface OperationMeta {
   /** Glyph shown on the keypad and in history expressions. */

@@ -67,7 +67,9 @@ type Options struct {
 	Logger *slog.Logger
 }
 
-// New builds the HTTP application described in docs/ARCHITECTURE.md §2.5.
+// New builds the HTTP application: the middleware stack, the versioned API
+// routes, the health probe and, when a static directory is configured, the
+// frontend shell.
 func New(opts Options) *fiber.App {
 	logger := opts.Logger
 	if logger == nil {

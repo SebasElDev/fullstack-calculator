@@ -41,7 +41,7 @@ src/
 
 ## Contract discipline
 
-`api/openapi.yaml` is the source of truth (docs/ARCHITECTURE.md §4). The types in
+`api/openapi.yaml` is the source of truth. The types in
 `src/lib/api/types.ts` mirror its schemas by hand, keeping the same names so the
 two can be diffed by eye. If the contract grows past what is comfortable to
 maintain by hand, generate them instead:
@@ -74,8 +74,8 @@ are automated, and one is manual:
    `x²`, `mod`, `±`, `%`). A mismatch means the two registries have drifted:
    fix whichever side disagrees with `api/openapi.yaml`.
 
-`ApiClient.listOperations()` exists for exactly this discovery check
-(docs/ARCHITECTURE.md §3.2). The UI does not call it — the keypad is built from
+`ApiClient.listOperations()` exists for exactly this discovery check. The UI
+does not call it — the keypad is built from
 the local `OPERATIONS` table so it renders without a round trip — but the method
 is part of the client's public surface so the endpoint can be exercised from a
 console or a test.

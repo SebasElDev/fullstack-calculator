@@ -85,7 +85,6 @@ Two providers, two separate concerns:
 │       ├── lib/operations.ts   
 │       └── features/calculator/
 ├── deploy/aws/
-├── docs/ARCHITECTURE.md 
 ├── Dockerfile 
 ├── compose.yaml
 ├── Makefile

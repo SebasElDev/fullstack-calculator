@@ -13,7 +13,7 @@ import {
   operationSymbol,
 } from "@/lib/operations";
 
-/** The registry table from docs/ARCHITECTURE.md §2.3 — the backend's twin. */
+/** The expected registry table — the twin of `domain.Registry()` on the Go side. */
 const EXPECTED: Record<OperationName, { symbol: string; arity: 1 | 2 }> = {
   add: { symbol: "+", arity: 2 },
   subtract: { symbol: "−", arity: 2 },
