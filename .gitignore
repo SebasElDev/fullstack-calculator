@@ -29,3 +29,6 @@ backend/coverage.html
 dist/
 tmp/
 .deploy-outputs.json
+
+# --- Claude Code worktrees ---
+.claude/

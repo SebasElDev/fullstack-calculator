@@ -146,16 +146,22 @@ Resources:
                   - cloudformation:DeleteChangeSet
                   - cloudformation:DeleteStack
                 Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ProjectName}-service/*"
-              - Sid: AppRunner
+              - Sid: AppRunnerCreateAndList
+                Effect: Allow
+                Action:
+                  # The service ARN does not exist before CreateService, and
+                  # the List* actions are not resource-scoped.
+                  - apprunner:CreateService
+                  - apprunner:List*
+                Resource: "*"
+              - Sid: AppRunnerManageProjectService
                 Effect: Allow
                 Action:
                   - apprunner:Describe*
-                  - apprunner:List*
                   - apprunner:UpdateService
                   - apprunner:StartDeployment
-                  - apprunner:CreateService
                   - apprunner:TagResource
-                Resource: "*"
+                Resource: !Sub "arn:aws:apprunner:${AWS::Region}:${AWS::AccountId}:service/${ProjectName}-service/*"
               - Sid: PassAppRunnerAccessRole
                 Effect: Allow
                 Action: iam:PassRole

@@ -80,8 +80,9 @@ backend/
     ├── domain/                         ENTITIES — pure, stdlib-only, no I/O
     │   ├── operation.go                type Operation string + Spec{Name,Symbol,Arity,Description,Apply}
     │   │                               Registry(): ordered list of all Specs; Lookup(Operation) (Spec, bool)
-    │   ├── arithmetic.go               Add, Subtract, Multiply, Divide, Power, Modulo, Negate, Sqrt, Square, Percent
-    │   │                               each: func(operands ...float64) (float64, error) — returns domain errors only
+    │   ├── arithmetic.go               add, subtract, multiply, divide, power, modulo, negate, sqrt, square, percent
+    │   │                               unexported (the exported names belong to the Operation constants); reached only
+    │   │                               through Registry()/Lookup()/Spec.Apply. each: func(...float64) (float64, error)
     │   ├── result.go                   NewResult(v float64) (Result, error): rejects NaN/±Inf, normalises to 15 sig. digits
     │   ├── errors.go                   sentinel errors (see §2.4)
     │   └── *_test.go                   table-driven tests for every operation incl. edge cases
@@ -190,7 +191,12 @@ var (
 | `ErrDivisionByZero` | 422 | `DIVISION_BY_ZERO` |
 | `ErrUndefinedResult` | 422 | `UNDEFINED_RESULT` |
 | `ErrResultOutOfRange` | 422 | `RESULT_OUT_OF_RANGE` |
+| unknown route / method under `/api` | 404 | `NOT_FOUND` |
 | anything else | 500 | `INTERNAL_ERROR` (message is generic; real error is logged) |
+
+A body over the 1 KiB limit is rejected by the HTTP server (fasthttp) before
+the request reaches the application, so that 413 carries a plain-text body;
+the error boundary still logs it.
 
 400 vs 422: 400 means "your request is malformed for this API"; 422 means "your
 request is valid but the mathematics has no finite answer".
@@ -405,15 +411,19 @@ via two CloudFormation stacks in `deploy/aws/`:
   App Runner deployments.
 * `service.yaml` — the App Runner service (params: `ImageUri`, `AccessRoleArn`).
 
-Scripts: `bootstrap.sh` (first deploy), `deploy.sh` (build → push → start
-deployment), `destroy.sh` (delete service, empty & delete ECR, delete
-foundation). Everything is tagged `Project=fullstack-calculator`.
+A release is a CloudFormation update of `service.yaml` with a new `ImageUri`
+(the commit SHA tag). CloudFormation updates the service's image identifier,
+which makes App Runner roll out a new deployment; the stack stays the single
+source of truth for what is running. Scripts: `bootstrap.sh` (first deploy:
+foundation → image → service), `deploy.sh` (build → push → update service
+stack → wait for `RUNNING`), `destroy.sh` (delete service, empty & delete ECR,
+delete foundation). Everything is tagged `Project=fullstack-calculator`.
 
 **CI/CD (`.github/workflows/ci.yml`):** `backend` (gofmt, vet, test -race),
 `frontend` (biome, tsc, vitest), `docker` (build, no push) on every push/PR;
 `deploy` job on `main` only, authenticating with OIDC (`vars.AWS_ROLE_ARN`),
-tags the image with the commit SHA, pushes, and triggers
-`aws apprunner start-deployment`.
+tags the image with the commit SHA, pushes, and runs the same
+`aws cloudformation deploy` of `service.yaml` that `deploy.sh` uses.
 
 ---
 
