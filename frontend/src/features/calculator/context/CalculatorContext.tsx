@@ -23,6 +23,7 @@ import type {
 } from "@/features/calculator/state/types";
 import { ApiError, NETWORK_ERROR } from "@/lib/api/client";
 import type { BinaryOperationName, CalculateRequest } from "@/lib/api/types";
+import { createIdFactory } from "@/lib/ids";
 
 export interface CalculatorContextValue {
   state: CalculatorState;
@@ -31,6 +32,9 @@ export interface CalculatorContextValue {
 }
 
 const CalculatorContext = createContext<CalculatorContextValue | null>(null);
+
+/** Keys for history rows. Never throws, so it cannot be mistaken for an API failure. */
+const nextHistoryId = createIdFactory("history");
 
 /** Where the chain stands once a result comes back. */
 interface ChainState {
@@ -93,7 +97,7 @@ export function CalculatorProvider({ children }: CalculatorProviderProps) {
           type: "CALCULATION_SUCCEEDED",
           result: response.result,
           entry: {
-            id: globalThis.crypto.randomUUID(),
+            id: nextHistoryId(),
             expression: plan.expression,
             result: response.result,
           },

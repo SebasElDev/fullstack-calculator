@@ -22,6 +22,11 @@ function unparseableResponse(status: number): Response {
   } as unknown as Response;
 }
 
+/** A valid `OperationInfo`, with one field replaced to make it invalid. */
+function info(overrides: Record<string, unknown>): Record<string, unknown> {
+  return { name: "add", symbol: "+", arity: 2, description: "Sum", ...overrides };
+}
+
 type FetchMock = Mock<typeof globalThis.fetch>;
 
 function createFetchMock(implementation: () => Promise<Response>): FetchMock {
@@ -110,6 +115,66 @@ describe("createApiClient", () => {
 
     await expect(client.health()).resolves.toEqual({ status: "ok", version: "dev" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("rejects a success body that does not match the contract", () => {
+    const malformedCalculateBodies: [string, unknown][] = [
+      ["not an object", "5"],
+      ["an unknown operation", { operation: "cube", operands: [3], result: 27 }],
+      ["operands that are not an array", { operation: "add", operands: "2,3", result: 5 }],
+      ["a non-numeric operand", { operation: "add", operands: [2, "3"], result: 5 }],
+      ["a missing result", { operation: "add", operands: [2, 3] }],
+      ["a null result", { operation: "add", operands: [2, 3], result: null }],
+      ["a non-finite result", { operation: "divide", operands: [1, 0], result: Number.NaN }],
+    ];
+
+    it.each(malformedCalculateBodies)("calculate: %s", async (_label, body) => {
+      const fetchMock = createFetchMock(async () => stubResponse(body));
+      const client = createApiClient({ baseUrl: BASE_URL, fetch: fetchMock });
+
+      const error = await client
+        .calculate({ operation: "add", operands: [2, 3] })
+        .catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 200, code: NETWORK_ERROR });
+      expect((error as ApiError).message).toBe("Malformed response from /api/v1/calculate");
+    });
+
+    const malformedOperationsBodies: [string, unknown][] = [
+      ["no operations array", { operations: null }],
+      ["an entry that is not an object", { operations: ["add"] }],
+      ["an unknown operation name", { operations: [info({ name: "cube" })] }],
+      ["a missing symbol", { operations: [info({ symbol: undefined })] }],
+      ["an arity outside the enum", { operations: [info({ arity: 3 })] }],
+      ["a missing description", { operations: [info({ description: undefined })] }],
+    ];
+
+    it.each(malformedOperationsBodies)("listOperations: %s", async (_label, body) => {
+      const fetchMock = createFetchMock(async () => stubResponse(body));
+      const client = createApiClient({ baseUrl: BASE_URL, fetch: fetchMock });
+
+      const error = await client.listOperations().catch((cause: unknown) => cause);
+
+      expect(error).toMatchObject({ status: 200, code: NETWORK_ERROR });
+      expect((error as ApiError).message).toBe("Malformed response from /api/v1/operations");
+    });
+
+    const malformedHealthBodies: [string, unknown][] = [
+      ["not an object", null],
+      ["a status other than ok", { status: "degraded", version: "1.0.0" }],
+      ["a missing version", { status: "ok" }],
+    ];
+
+    it.each(malformedHealthBodies)("health: %s", async (_label, body) => {
+      const fetchMock = createFetchMock(async () => stubResponse(body));
+      const client = createApiClient({ baseUrl: BASE_URL, fetch: fetchMock });
+
+      const error = await client.health().catch((cause: unknown) => cause);
+
+      expect(error).toMatchObject({ status: 200, code: NETWORK_ERROR });
+      expect((error as ApiError).message).toBe("Malformed response from /api/v1/health");
+    });
   });
 
   it("turns an ErrorResponse envelope into an ApiError", async () => {

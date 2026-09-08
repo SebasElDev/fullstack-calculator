@@ -5,6 +5,9 @@ import {
   type ErrorCode,
   type ErrorResponse,
   type HealthResponse,
+  OPERATION_NAMES,
+  type OperationInfo,
+  type OperationName,
   type OperationsResponse,
 } from "@/lib/api/types";
 
@@ -79,6 +82,58 @@ function isErrorResponse(value: unknown): value is ErrorResponse {
   return isErrorCode(value.error.code) && typeof value.error.message === "string";
 }
 
+/**
+ * Narrows a successful body to the schema the endpoint promises.
+ *
+ * A 200 is not a guarantee: a proxy, a stale deployment or a partial write can
+ * all produce a well-formed JSON body that does not match the contract. Letting
+ * one through would put `undefined` on the display and then send it back as an
+ * operand, so every success is narrowed exactly like a failure envelope is.
+ */
+type ResponseGuard<T> = (value: unknown) => value is T;
+
+function isOperationName(value: unknown): value is OperationName {
+  return typeof value === "string" && (OPERATION_NAMES as readonly string[]).includes(value);
+}
+
+/** `components.schemas.Operand`: a finite IEEE-754 double. */
+function isOperand(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isOperandList(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(isOperand);
+}
+
+function isCalculateResponse(value: unknown): value is CalculateResponse {
+  return (
+    isRecord(value) &&
+    isOperationName(value.operation) &&
+    isOperandList(value.operands) &&
+    isOperand(value.result)
+  );
+}
+
+function isOperationInfo(value: unknown): value is OperationInfo {
+  return (
+    isRecord(value) &&
+    isOperationName(value.name) &&
+    typeof value.symbol === "string" &&
+    (value.arity === 1 || value.arity === 2) &&
+    typeof value.description === "string"
+  );
+}
+
+function isOperationsResponse(value: unknown): value is OperationsResponse {
+  return (
+    isRecord(value) && Array.isArray(value.operations) && value.operations.every(isOperationInfo)
+  );
+}
+
+function isHealthResponse(value: unknown): value is HealthResponse {
+  return isRecord(value) && value.status === "ok" && typeof value.version === "string";
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
 }
@@ -86,7 +141,11 @@ function joinUrl(baseUrl: string, path: string): string {
 export function createApiClient({ baseUrl, fetch }: ApiClientOptions): ApiClient {
   const doFetch: typeof globalThis.fetch = fetch ?? globalThis.fetch.bind(globalThis);
 
-  async function request<T>(path: string, init: RequestInit): Promise<T> {
+  async function request<T>(
+    path: string,
+    init: RequestInit,
+    isExpected: ResponseGuard<T>,
+  ): Promise<T> {
     const url = joinUrl(baseUrl, path);
 
     let response: Response;
@@ -122,34 +181,50 @@ export function createApiClient({ baseUrl, fetch }: ApiClientOptions): ApiClient
       );
     }
 
-    return body as T;
+    if (!isExpected(body)) {
+      throw new ApiError(response.status, NETWORK_ERROR, `Malformed response from ${url}`);
+    }
+
+    return body;
   }
 
   return {
     calculate(payload, signal) {
-      return request<CalculateResponse>(ENDPOINTS.calculate, {
-        method: "POST",
-        headers: {
-          "Content-Type": JSON_MEDIA_TYPE,
-          Accept: JSON_MEDIA_TYPE,
+      return request(
+        ENDPOINTS.calculate,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": JSON_MEDIA_TYPE,
+            Accept: JSON_MEDIA_TYPE,
+          },
+          body: JSON.stringify(payload),
+          signal,
         },
-        body: JSON.stringify(payload),
-        signal,
-      });
+        isCalculateResponse,
+      );
     },
     listOperations(signal) {
-      return request<OperationsResponse>(ENDPOINTS.operations, {
-        method: "GET",
-        headers: { Accept: JSON_MEDIA_TYPE },
-        signal,
-      });
+      return request(
+        ENDPOINTS.operations,
+        {
+          method: "GET",
+          headers: { Accept: JSON_MEDIA_TYPE },
+          signal,
+        },
+        isOperationsResponse,
+      );
     },
     health(signal) {
-      return request<HealthResponse>(ENDPOINTS.health, {
-        method: "GET",
-        headers: { Accept: JSON_MEDIA_TYPE },
-        signal,
-      });
+      return request(
+        ENDPOINTS.health,
+        {
+          method: "GET",
+          headers: { Accept: JSON_MEDIA_TYPE },
+          signal,
+        },
+        isHealthResponse,
+      );
     },
   };
 }
