@@ -1,6 +1,7 @@
 package fiberadapter_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -315,25 +317,11 @@ func TestTransportLimitIsLoggedWithItsRealStatus(t *testing.T) {
 		Logger:     slog.New(slog.NewJSONHandler(logs, nil)),
 	})
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listening failed: %v", err)
-	}
-	go func() { _ = app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true}) }()
-	t.Cleanup(func() { _ = app.Shutdown() })
-
 	body := `{"operation":"add","operands":[1,` + strings.Repeat("1", 66*1024) + `]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/calculate", strings.NewReader(body))
+	req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 
-	url := "http://" + listener.Addr().String() + "/api/v1/calculate"
-	res, err := http.Post(url, fiber.MIMEApplicationJSON, strings.NewReader(body)) //nolint:noctx // short-lived test request
-	if err != nil {
-		t.Fatalf("POST %s failed: %v", url, err)
-	}
-	t.Cleanup(func() { _ = res.Body.Close() })
-	payload, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("reading the body failed: %v", err)
-	}
+	res, payload := serveOverMemory(t, app, req)
 
 	if res.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d; want 413. body: %s", res.StatusCode, payload)
@@ -361,6 +349,60 @@ func TestTransportLimitIsLoggedWithItsRealStatus(t *testing.T) {
 	if !rejected {
 		t.Errorf("no \"request rejected\" log line with status 413. logs:\n%s", logs.String())
 	}
+}
+
+// serveOverMemory drives the fasthttp server on an in-process connection and
+// returns whatever response it wrote, even when serving ended with an error.
+//
+// It exists for requests the transport itself rejects. fasthttp reports an
+// oversized body as an error from ServeConn after it has already written the
+// 413, and app.Test surfaces that error instead of the response. A real TCP
+// client is no better: the server resets the connection mid-upload, so the
+// client can lose the response to that race.
+func serveOverMemory(t *testing.T, app *fiber.App, req *http.Request) (*http.Response, []byte) {
+	t.Helper()
+
+	conn := &memoryConn{}
+	if err := req.Write(&conn.in); err != nil {
+		t.Fatalf("serialising the request failed: %v", err)
+	}
+
+	app.RebuildTree()
+	if err := app.Server().ServeConn(conn); err != nil {
+		t.Logf("ServeConn reported %q; the response written before it is what counts", err)
+	}
+
+	res, err := http.ReadResponse(bufio.NewReader(&conn.out), req)
+	if err != nil {
+		t.Fatalf("no parseable response was written: %v", err)
+	}
+	t.Cleanup(func() { _ = res.Body.Close() })
+
+	payload, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("reading the body failed: %v", err)
+	}
+	return res, payload
+}
+
+// memoryConn is a net.Conn whose peer is a pair of buffers: the server reads
+// the raw request from in and writes its response into out.
+type memoryConn struct {
+	in  bytes.Buffer
+	out bytes.Buffer
+}
+
+func (c *memoryConn) Read(b []byte) (int, error)  { return c.in.Read(b) }
+func (c *memoryConn) Write(b []byte) (int, error) { return c.out.Write(b) }
+func (*memoryConn) Close() error                  { return nil }
+func (*memoryConn) LocalAddr() net.Addr           { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }
+func (*memoryConn) RemoteAddr() net.Addr          { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }
+func (*memoryConn) SetDeadline(time.Time) error   { return nil }
+func (*memoryConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+func (*memoryConn) SetWriteDeadline(time.Time) error {
+	return nil
 }
 
 func TestPanicsBecomeInternalErrors(t *testing.T) {
