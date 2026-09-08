@@ -8,8 +8,8 @@ import {
 import {
   isBinaryOperation,
   isUnaryOperation,
-  operationLabel,
   OPERATIONS,
+  operationLabel,
   operationSymbol,
 } from "@/lib/operations";
 

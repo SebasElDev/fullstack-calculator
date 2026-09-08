@@ -6,11 +6,7 @@ import {
   INITIAL_INPUT,
   MAX_INPUT_LENGTH,
 } from "@/features/calculator/state/reducer";
-import type {
-  CalculatorState,
-  Digit,
-  HistoryEntry,
-} from "@/features/calculator/state/types";
+import type { CalculatorState, Digit, HistoryEntry } from "@/features/calculator/state/types";
 
 function stateWith(partial: Partial<CalculatorState> = {}): CalculatorState {
   return { ...createInitialState(), ...partial };
@@ -115,7 +111,9 @@ describe("calculatorReducer", () => {
 
   describe("BACKSPACE", () => {
     it("removes the last character", () => {
-      expect(calculatorReducer(stateWith({ input: "123" }), { type: "BACKSPACE" }).input).toBe("12");
+      expect(calculatorReducer(stateWith({ input: "123" }), { type: "BACKSPACE" }).input).toBe(
+        "12",
+      );
     });
 
     it("falls back to zero on the last character", () => {
