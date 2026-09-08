@@ -11,9 +11,6 @@ export default function App() {
       <main className="flex min-h-dvh flex-col items-center justify-center gap-5 px-3 py-8">
         <header className="w-full max-w-sm">
           <h1 className="text-base font-semibold tracking-tight text-slate-100">Calculator</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Every operation is computed by the Go API — the browser only formats strings.
-          </p>
         </header>
         <Calculator>
           <Calculator.Status />
